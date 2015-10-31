@@ -1,4 +1,5 @@
 #!/usr/bin/env python2
+import sys
 class Assembler:
   """
     A two Pass Assembler, which receives source code filename as input,
@@ -9,27 +10,28 @@ class Assembler:
       filename       -> Source code filename
       assembly_code  -> Source code Data
   """
-  import os,sys,inspect
-  currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 
   program_length = 0
   optable = None
   symtable = None
+  filename = None
   assembly_code = None
-  object_code = None
 
-  def __init__(self):
+  def __init__(self, filename):
     """
       Constructor initialised, which starts the assembling process
       Source File -> filename
     """
+
+    self.filename = filename
     try:
-      fp=open(self.currentdir+'/optable.dat','r')
+      fp = open(filename,'r')
+      self.assembly_code = fp.readlines()                                    #Read Source File.
       fp.close()
-    except (OSError,IOError) as e:
-      print 'Op Code Table Missing, Please Store the Op Code Table for the Assembler\nError! File: optable.dat Missing'
-      
-    
+      self.assemble()
+    except (OSError,IOError) as err:
+      print 'file: '+self.filename+' not found'
+
   def createSymbolTable(self):
     """
       Creates Symbol Table using statically defined optable and source code.
@@ -138,7 +140,7 @@ class Assembler:
         print "Error! Syntax Error Operand "+error+" is Undeclared in the Assembly Code\n"
       exit(-1)
 
-  def assemble(self,code):
+  def assemble(self):
     """
       Assembling Process ->
         Loading optable
@@ -146,15 +148,12 @@ class Assembler:
         Pass 2 execution
     """
 
-    self.assembly_code = code                                             #Read Source File.
-
     self.loadOpTable()                                                    #Load OpTable from optable.dat.
     print "\nSuccessfully Loaded OpCode Table for the Machine : optable.dat\n"
     self.pass1()                                                          #Create Symbol Table and Validate Source Code.
     print "Successfully created Symbol Table for the input program : symtable.dat\n"
-    self.object_code = self.pass2()                                       #Map Linear Address with required Opcode from Optable.
-    print "Successfully created Object Code for the input code\n\n"
-    return self.object_code
+    self.pass2()                                                          #Map Linear Address with required Opcode from Optable.
+    print "Successfully created Object Code for the input program : ObjectFile\n"
 
   def pass1(self):
     """
@@ -164,7 +163,7 @@ class Assembler:
     """
 
     self.createSymbolTable()                                              #Create Symbol Table.
-    fp = open(self.currentdir+'/symtable.dat','w')
+    fp = open('symtable.dat','w')
     symbol = self.symtable.keys()
 
   def pass2(self):
@@ -177,7 +176,7 @@ class Assembler:
     assembly_code = self.assembly_code
     program_name = "Program"
     start_address = 0
-    object_code = None
+    fp = open('ObjectFile','w')
     first_line = assembly_code[0]                                         #Check of first Line is Start operation.
     first_line = (first_line.strip()).split()
     args = first_line.__len__()
@@ -192,8 +191,8 @@ class Assembler:
 
     self.program_length -= int(start_address,16)
     self.program_length = hex(self.program_length)
-    object_code = 'H^'+program_name[0:5]+'^'+str(start_address)[2:]+'^'+str(self.program_length)[2:]+'\n'
-    object_code = object_code+'T'
+    fp.write('H'+'^'+program_name[0:5]+'^'+str(start_address)+'^'+str(self.program_length)+'\n')
+    fp.write('T')
     for line in assembly_code:
       input_line = ((line.strip()).split())
       args = input_line.__len__()
@@ -202,14 +201,15 @@ class Assembler:
         label, opcode, operand = input_line
         opcode = opcode.upper()
         if(opcode!='RESB' and opcode!='BYTE' and opcode!='WORD' and opcode!='RESW'):
-          object_code = object_code+'^'+hex((self.optable[opcode])[0]+int(self.symtable[operand]))[2:]
+          fp.write('^'+hex((self.optable[opcode])[0]+int(self.symtable[operand])))
 
       elif(args==2):                                                      #Contains opcode,operand.
         opcode,operand=input_line
         if((opcode == 'END' or opcode == 'end') and operand == program_name):
-          object_code = object_code+'\nE'+'^'+start_address[2:]
+          fp.write('\nE'+'^'+start_address)
+          fp.close()
           break
-        object_code = object_code+'^'+hex(self.optable[opcode][0]+self.symtable[operand])[2:]
+        fp.write('^'+hex(self.optable[opcode][0]+self.symtable[operand]))
 
       elif(args==1):                                                      #Contains opcode
         opcode=input_line[0]
@@ -218,13 +218,13 @@ class Assembler:
           continue
 
         elif(opcode == 'END' or opcode == 'end'):                         #Terminatation of Source Code.
-          object_code = object_code+'\nE'+'^'+start_address[2:]
+          fp.write('\nE'+'^'+start_address)
+          fp.close()
           break
-        object_code = object_code+optable[opcode]
+        fp.write(optable[opcode])
 
       elif(args==0):                                                      #Blank Line Skip.
         continue
-    return object_code
 
   def loadOpTable(self):
     """
@@ -233,7 +233,7 @@ class Assembler:
     """
 
     self.optable = {}
-    fp = open(self.currentdir+'/optable.dat','r')
+    fp = open('optable.dat','r')
     data = fp.readlines()
     for line in data:
       line = line.strip()
@@ -241,3 +241,16 @@ class Assembler:
       shift = ( int(instr_length) - 1 ) * 8                               #right shift required of opcode to start from msb
       self.optable[opcode] = [int(bincode,16)<<shift , instr_length]
     fp.close()
+
+if __name__ == '__main__':
+
+  if len(sys.argv)<2:
+    print "Error! no Input file detected"                                 #Input File Missing.
+  else:
+    filename=sys.argv[1]
+    try:
+      fp=open('optable.dat','r')
+      fp.close()
+    except (OSError,IOError) as e:
+      print 'Op Code Table Missing, Please Store the Op Code Table for the Assembler\nError! File: optable.dat Missing'
+    assembler = Assembler(filename)
